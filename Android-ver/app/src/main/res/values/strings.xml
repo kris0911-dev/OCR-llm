@@ -1,0 +1,26 @@
+<resources>
+  <string name="app_name">PP-OCRv6 Scanner</string>
+  <string name="camera">Camera</string>
+  <string name="scan">Scan</string>
+  <string name="gallery">Gallery</string>
+  <string name="status_ready">Ready. Point the camera at a page and tap Scan, or pick an image.</string>
+  <string name="hint_start">Allow camera access to scan, or tap Gallery to open an image</string>
+  <string name="hint_no_camera">No camera available. Tap Gallery to open an image.</string>
+  <string name="scanned_image">Scanned image with recognized text boxes</string>
+  <string name="text_hint">Recognized text appears here</string>
+  <string name="run_again">Run again</string>
+  <string name="copy">Copy</string>
+  <string name="share">Share</string>
+  <string name="save">Save</string>
+  <string name="settings">OCR settings</string>
+  <string name="language">Language</string>
+  <string name="model_tier">Model tier</string>
+  <string name="detection_size">Detection size</string>
+  <string name="min_confidence">Min confidence</string>
+  <string name="flatten">Detect page &amp; flatten (document scan)</string>
+  <string name="auto_capture">Auto-capture when page is steady</string>
+  <string name="copied">Text copied</string>
+  <string name="saved">Saved</string>
+  <string name="nothing_to_share">No text yet</string>
+  <string name="ocr_error">OCR error</string>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Scan frame corners around three text lines. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="108dp"
+  android:height="108dp"
+  android:viewportWidth="108"
+  android:viewportHeight="108">
+  <path
+    android:fillColor="#00000000"
+    android:pathData="M34,44 V34 H44 M64,34 H74 V44 M74,64 V74 H64 M44,74 H34 V64"
+    android:strokeWidth="4"
+    android:strokeColor="#FFFFFFFF"
+    android:strokeLineCap="round"
+    android:strokeLineJoin="round" />
+  <path
+    android:fillColor="#FFFFFFFF"
+    android:pathData="M42,45h24v4h-24z M42,52h18v4h-18z M42,59h22v4h-22z" />
+</vector>

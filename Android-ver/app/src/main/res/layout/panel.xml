@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content"
+  android:orientation="vertical"
+  android:paddingHorizontal="12dp"
+  android:paddingBottom="16dp">
+
+  <com.google.android.material.textfield.TextInputLayout
+    style="?attr/textInputOutlinedStyle"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:hint="@string/text_hint">
+
+    <com.google.android.material.textfield.TextInputEditText
+      android:id="@+id/result_text"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:gravity="top|start"
+      android:inputType="textMultiLine|textNoSuggestions"
+      android:minLines="5" />
+  </com.google.android.material.textfield.TextInputLayout>
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="end"
+    android:orientation="horizontal">
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/rerun_button"
+      style="?attr/borderlessButtonStyle"
+      android:minWidth="0dp"
+      android:paddingHorizontal="10dp"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="@string/run_again" />
+
+    <Space
+      android:layout_width="0dp"
+      android:layout_height="0dp"
+      android:layout_weight="1" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/copy_button"
+      style="?attr/borderlessButtonStyle"
+      android:minWidth="0dp"
+      android:paddingHorizontal="10dp"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="@string/copy" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/share_button"
+      style="?attr/borderlessButtonStyle"
+      android:minWidth="0dp"
+      android:paddingHorizontal="10dp"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="@string/share" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/save_button"
+      style="?attr/borderlessButtonStyle"
+      android:minWidth="0dp"
+      android:paddingHorizontal="10dp"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="@string/save" />
+  </LinearLayout>
+
+  <TextView
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="4dp"
+    android:text="@string/settings"
+    android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+  <LinearLayout style="@style/SettingRow">
+    <TextView style="@style/SettingLabel" android:text="@string/language" />
+    <Spinner android:id="@+id/language_spinner" style="@style/SettingValue" />
+  </LinearLayout>
+
+  <LinearLayout style="@style/SettingRow">
+    <TextView style="@style/SettingLabel" android:text="@string/model_tier" />
+    <Spinner android:id="@+id/tier_spinner" style="@style/SettingValue" />
+  </LinearLayout>
+
+  <LinearLayout style="@style/SettingRow">
+    <TextView style="@style/SettingLabel" android:text="@string/detection_size" />
+    <Spinner android:id="@+id/det_side_spinner" style="@style/SettingValue" />
+  </LinearLayout>
+
+  <TextView
+    android:id="@+id/min_score_label"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:text="@string/min_confidence" />
+
+  <com.google.android.material.slider.Slider
+    android:id="@+id/min_score_slider"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:contentDescription="@string/min_confidence"
+    android:stepSize="0.05"
+    android:value="0.5"
+    android:valueFrom="0"
+    android:valueTo="1"
+    app:labelBehavior="gone" />
+
+  <com.google.android.material.materialswitch.MaterialSwitch
+    android:id="@+id/flatten_switch"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:checked="true"
+    android:text="@string/flatten" />
+
+  <com.google.android.material.materialswitch.MaterialSwitch
+    android:id="@+id/auto_switch"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:text="@string/auto_capture" />
+</LinearLayout>

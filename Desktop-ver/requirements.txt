@@ -1,0 +1,5 @@
+﻿paddleocr>=3.7
+paddlepaddle>=3.0
+opencv-contrib-python  # same cv2 package paddlex uses; don't also install opencv-python
+PySide6>=6.6
+numpy

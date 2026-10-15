@@ -1,0 +1,12 @@
+# CUDA (NVIDIA GPU) build — install in its own venv instead of requirements.txt:
+#   pip install -r requirements-gpu.txt
+#
+# GPU inference runs through ONNX Runtime's CUDA provider. The [cuda,cudnn]
+# extras pull the CUDA 12 + cuDNN 9 runtime as pip wheels, so no CUDA Toolkit
+# install is needed — only a recent NVIDIA driver.
+#
+# Alternative: Paddle's own CUDA build (not on PyPI for Windows):
+#   pip install paddlepaddle-gpu==3.3.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+# The app detects either and picks it automatically (Backend: auto).
+-r requirements.txt
+onnxruntime-gpu[cuda,cudnn]>=1.20
