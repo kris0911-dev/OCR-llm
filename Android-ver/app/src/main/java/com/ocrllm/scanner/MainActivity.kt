@@ -13,6 +13,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import android.view.View
+import android.view.WindowManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
@@ -65,6 +66,11 @@ class MainActivity : AppCompatActivity() {
   private var cameraLive = false
   private var tiers: List<String> = emptyList()
   private var shownText: String? = null
+  private var shownBitmap: Bitmap? = null
+  @Volatile private var alive = true
+  private var lastDetectAt = 0L
+  @Volatile private var resetSteady = false
+  private val steadyLock = Any()
 
   // Read by the analysis thread.
   @Volatile private var flattenEnabled = true
@@ -119,8 +125,10 @@ class MainActivity : AppCompatActivity() {
   }
 
   override fun onDestroy() {
-    super.onDestroy()
+    alive = false
+    stopCamera()
     cameraExecutor.shutdown()
+    super.onDestroy()
   }
 
   // ------------------------------------------------------------------ UI
@@ -137,8 +145,13 @@ class MainActivity : AppCompatActivity() {
     val panel = binding.panel
     panel.rerunButton.setOnClickListener { viewModel.rerun(currentSettings()) }
     panel.copyButton.setOnClickListener {
+      val text = currentText()
+      if (text.isBlank()) {
+        Toast.makeText(this, R.string.nothing_to_share, Toast.LENGTH_SHORT).show()
+        return@setOnClickListener
+      }
       val clipboard = getSystemService(ClipboardManager::class.java)
-      clipboard.setPrimaryClip(ClipData.newPlainText("OCR text", currentText()))
+      clipboard.setPrimaryClip(ClipData.newPlainText("OCR text", text))
       Toast.makeText(this, R.string.copied, Toast.LENGTH_SHORT).show()
     }
     panel.shareButton.setOnClickListener {
@@ -221,10 +234,19 @@ class MainActivity : AppCompatActivity() {
   private fun currentText() = binding.panel.resultText.text?.toString().orEmpty()
 
   private fun render(state: UiState) {
+    if (!alive || isDestroyed) return
     val stage = binding.stage
     val showImage = state.image != null
     stage.resultImage.isVisible = showImage
-    stage.resultImage.setImageBitmap(state.image)
+    if (state.image !== shownBitmap) {
+      val previous = shownBitmap
+      shownBitmap = state.image
+      stage.resultImage.setImageBitmap(state.image)
+      if (previous != null && previous !== state.image && !previous.isRecycled && !viewModel.retains(previous)) {
+        previous.recycle()
+      }
+    }
+    viewModel.releaseUnused()
     stage.preview.isVisible = !showImage
     stage.overlay.isVisible = !showImage
     stage.hint.isVisible = !showImage && !cameraLive
@@ -236,6 +258,11 @@ class MainActivity : AppCompatActivity() {
     }
     binding.actions.scanButton.isEnabled = cameraLive && !state.busy && !showImage
     binding.panel.rerunButton.isEnabled = viewModel.hasImage && !state.busy
+    if (cameraLive || state.busy) {
+      window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    } else {
+      window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
     state.error?.let {
       viewModel.clearError()
       showError(it)
@@ -266,8 +293,7 @@ class MainActivity : AppCompatActivity() {
         return@launch
       }
       stopCamera()
-      // Like the desktop app, opened images are used as-is (no page flattening).
-      viewModel.process(bitmap, flatten = false, settings = currentSettings())
+      viewModel.process(bitmap, flattenEnabled, currentSettings())
     }
   }
 
@@ -289,6 +315,7 @@ class MainActivity : AppCompatActivity() {
     }
     val future = ProcessCameraProvider.getInstance(this)
     future.addListener({
+      if (!alive || isDestroyed) return@addListener
       val provider = try {
         future.get()
       } catch (e: Exception) {
@@ -308,12 +335,13 @@ class MainActivity : AppCompatActivity() {
       // Only Preview + ImageAnalysis: a combination every device supports. Like the desktop
       // app, Scan takes the next analysis frame instead of using ImageCapture, which some
       // phones fail with "Camera is closed" when three streams run at once.
+      val frameSize = resolution(Size(1280, 960))
       val preview = Preview.Builder()
-        .setResolutionSelector(resolution(Size(1280, 960)))
+        .setResolutionSelector(frameSize)
         .build()
         .also { it.surfaceProvider = binding.stage.preview.surfaceProvider }
       val analysis = ImageAnalysis.Builder()
-        .setResolutionSelector(resolution(Size(1920, 1440)))
+        .setResolutionSelector(frameSize)
         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
         .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
         .build()
@@ -378,62 +406,68 @@ class MainActivity : AppCompatActivity() {
 
   /** Grabs frames for Scan, and runs live page detection for the outline and auto-capture. */
   private fun analyze(proxy: ImageProxy) {
+    if (!alive) return
     proxy.use {
       if (captureRequested) {
-        val frame = rotate(it.toBitmap(), it.imageInfo.rotationDegrees)
+        var frame = rotate(it.toBitmap(), it.imageInfo.rotationDegrees)
+        frame = Images.limit(frame, Images.MAX_SIDE)
         runOnUiThread {
-          if (!captureRequested) return@runOnUiThread
+          if (!alive || isDestroyed || !captureRequested) {
+            if (!frame.isRecycled) frame.recycle()
+            return@runOnUiThread
+          }
           captureRequested = false
-          stopCamera() // freeze on the captured shot
+          stopCamera()
           viewModel.process(frame, flattenEnabled, currentSettings())
         }
         return
       }
       if (!flattenEnabled) return
-      // Page detection works at 500 px anyway, so shrink the frame first.
+      val now = SystemClock.elapsedRealtime()
+      if (now - lastDetectAt < DETECT_INTERVAL_MS) return
+      lastDetectAt = now
       val full = it.toBitmap()
-      val scale = DETECT_SIDE.toFloat() / max(full.width, full.height)
-      val small = if (scale < 1) {
-        Bitmap.createScaledBitmap(full, (full.width * scale).toInt(), (full.height * scale).toInt(), true)
-      } else {
-        full
-      }
-      val bgr = Mat()
-      val rgba = Mat()
-      org.opencv.android.Utils.bitmapToMat(small, rgba)
-      Imgproc.cvtColor(rgba, bgr, Imgproc.COLOR_RGBA2BGR)
-      rgba.release()
-      when (it.imageInfo.rotationDegrees) {
-        90 -> Core.rotate(bgr, bgr, Core.ROTATE_90_CLOCKWISE)
-        180 -> Core.rotate(bgr, bgr, Core.ROTATE_180)
-        270 -> Core.rotate(bgr, bgr, Core.ROTATE_90_COUNTERCLOCKWISE)
-      }
+      val rotated = rotate(full, it.imageInfo.rotationDegrees)
+      val small = Images.limit(rotated, DETECT_SIDE)
+      val bgr = Images.bitmapToBgr(small)
+      if (!small.isRecycled) small.recycle()
       val quad = Scanner.findDocument(bgr)
       val frameW = bgr.cols()
       val frameH = bgr.rows()
       bgr.release()
-
-      // The page counts as steady while no corner moves more than 2% of the frame
-      // from where the current streak started.
-      val now = SystemClock.elapsedRealtime()
-      val anchor = anchorQuad
-      if (quad == null) {
-        anchorQuad = null
-        steadySince = 0L
-      } else if (anchor == null || drift(quad, anchor) > STEADY_TOLERANCE * max(frameW, frameH)) {
-        anchorQuad = quad
-        steadySince = now
-      }
-      val steadyMs = if (quad != null) now - steadySince else 0L
-      val fire = quad != null && autoCaptureEnabled && steadyMs >= AUTO_CAPTURE_MS
+      val (hot, fire) = updateSteady(quad, frameW, frameH, now)
       runOnUiThread {
-        if (!cameraLive) return@runOnUiThread
-        binding.stage.overlay.show(quad, frameW, frameH, steadyMs >= AUTO_CAPTURE_MS / 2)
+        if (!alive || isDestroyed || !cameraLive) return@runOnUiThread
+        binding.stage.overlay.show(quad, frameW, frameH, hot)
         if (fire && !viewModel.busy && !captureRequested) {
-          anchorQuad = null
+          resetSteady = true
           capture()
         }
       }
+    }
+  }
+
+  /** Steadiness is tracked only on the analyzer thread. */
+  private fun updateSteady(quad: List<Point>?, frameW: Int, frameH: Int, now: Long): Pair<Boolean, Boolean> {
+    synchronized(steadyLock) {
+      if (resetSteady) {
+        anchorQuad = null
+        steadySince = 0L
+        resetSteady = false
+      }
+      if (quad == null) {
+        anchorQuad = null
+        steadySince = 0L
+        return false to false
+      }
+      val anchor = anchorQuad
+      val tol = STEADY_TOLERANCE * max(frameW, frameH)
+      if (anchor == null || drift(quad, anchor) > tol) {
+        anchorQuad = quad
+        steadySince = now
+      }
+      val steadyMs = now - steadySince
+      return (steadyMs >= AUTO_CAPTURE_MS / 2) to (autoCaptureEnabled && steadyMs >= AUTO_CAPTURE_MS)
     }
   }
 
@@ -449,14 +483,17 @@ class MainActivity : AppCompatActivity() {
   private fun rotate(bitmap: Bitmap, degrees: Int): Bitmap {
     if (degrees == 0) return bitmap
     val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
-    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    val turned = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    if (turned !== bitmap) bitmap.recycle()
+    return turned
   }
 
   companion object {
     private const val TAG = "OcrScanner"
     private const val AUTO_CAPTURE_MS = 1200L
     private const val CAPTURE_TIMEOUT_MS = 3000L
-    private const val DETECT_SIDE = 640
+    private const val DETECT_SIDE = 500
+    private const val DETECT_INTERVAL_MS = 125L
     private const val STEADY_TOLERANCE = 0.02
     private const val KEY_LANGUAGE = "language"
     private const val KEY_TIER = "tier"

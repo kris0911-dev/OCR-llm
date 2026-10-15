@@ -275,7 +275,7 @@ class MainWindow(QMainWindow):
         if self.doc_check.isChecked():
             quad = find_document(frame)
             if quad is not None:
-                frame = warp_document(frame, quad) ?: frame
+                frame = warp_document(frame, quad) or frame
         self._stop_camera()  # freeze on the captured shot
         self._run_ocr(frame)
 

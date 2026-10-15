@@ -1,6 +1,17 @@
 <resources>
-  <style name="Theme.OcrScanner" parent="Theme.Material3.DayNight.NoActionBar">
+  <style name="Theme.OcrScanner" parent="Theme.Material3.Light.NoActionBar">
     <item name="colorPrimary">@color/brand</item>
+    <item name="colorOnPrimary">@color/on_brand</item>
+    <item name="colorSecondary">@color/brand_dark</item>
+    <item name="colorSurface">@color/paper</item>
+    <item name="colorOnSurface">@color/ink</item>
+    <item name="android:colorBackground">@color/paper</item>
+    <item name="android:windowBackground">@color/paper</item>
+    <item name="android:statusBarColor">@color/paper</item>
+    <item name="android:navigationBarColor">@color/paper</item>
+    <item name="android:windowLightStatusBar">true</item>
+    <item name="android:windowLightNavigationBar">true</item>
+    <item name="shapeCornerSizeMedium">8dp</item>
   </style>
 
   <style name="SettingRow">
@@ -15,6 +26,7 @@
     <item name="android:layout_width">0dp</item>
     <item name="android:layout_height">wrap_content</item>
     <item name="android:layout_weight">2</item>
+    <item name="android:textColor">@color/ink</item>
   </style>
 
   <style name="SettingValue">

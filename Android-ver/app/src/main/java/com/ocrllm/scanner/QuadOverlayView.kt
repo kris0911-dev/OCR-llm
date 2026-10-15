@@ -11,7 +11,7 @@ import org.opencv.core.Point
 import kotlin.math.min
 
 /**
- * Draws the detected page outline over a camera preview shown with FIT_CENTER.
+ * Draws a plain viewfinder, plus the detected page outline, over a FIT_CENTER preview.
  * Corners are in analysis-frame pixels (frame already rotated upright).
  */
 class QuadOverlayView @JvmOverloads constructor(
@@ -24,19 +24,27 @@ class QuadOverlayView @JvmOverloads constructor(
   private val path = Path()
   private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
-    strokeWidth = 4f * resources.displayMetrics.density
     strokeJoin = Paint.Join.ROUND
+    strokeCap = Paint.Cap.SQUARE
+  }
+  private val bracket = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    style = Paint.Style.STROKE
+    strokeCap = Paint.Cap.SQUARE
+    color = Color.argb(180, 244, 241, 234)
   }
 
   fun show(quad: List<Point>?, frameWidth: Int, frameHeight: Int, steady: Boolean) {
     this.quad = quad
-    frameW = frameWidth
-    frameH = frameHeight
+    frameW = frameWidth.coerceAtLeast(1)
+    frameH = frameHeight.coerceAtLeast(1)
     this.steady = steady
     invalidate()
   }
 
   override fun onDraw(canvas: Canvas) {
+    val density = resources.displayMetrics.density
+    bracket.strokeWidth = 2f * density
+    drawBrackets(canvas)
     val q = quad ?: return
     val scale = min(width.toFloat() / frameW, height.toFloat() / frameH)
     val dx = (width - frameW * scale) / 2
@@ -48,8 +56,24 @@ class QuadOverlayView @JvmOverloads constructor(
       if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
     path.close()
-    // Green while tracking, amber once the page holds still (auto-capture is about to fire).
-    paint.color = if (steady) Color.rgb(255, 200, 0) else Color.rgb(0, 200, 0)
+    paint.strokeWidth = 3f * density
+    paint.color = if (steady) Color.rgb(244, 180, 60) else Color.rgb(32, 196, 160)
     canvas.drawPath(path, paint)
+  }
+
+  /** Four corner ticks so the preview reads as a scanner, even before a page is found. */
+  private fun drawBrackets(canvas: Canvas) {
+    val inset = min(width, height) * 0.08f
+    val arm = min(width, height) * 0.07f
+    val right = width - inset
+    val bottom = height - inset
+    canvas.drawLine(inset, inset, inset + arm, inset, bracket)
+    canvas.drawLine(inset, inset, inset, inset + arm, bracket)
+    canvas.drawLine(right, inset, right - arm, inset, bracket)
+    canvas.drawLine(right, inset, right, inset + arm, bracket)
+    canvas.drawLine(inset, bottom, inset + arm, bottom, bracket)
+    canvas.drawLine(inset, bottom, inset, bottom - arm, bracket)
+    canvas.drawLine(right, bottom, right - arm, bottom, bracket)
+    canvas.drawLine(right, bottom, right, bottom - arm, bracket)
   }
 }

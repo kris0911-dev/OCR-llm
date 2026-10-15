@@ -45,7 +45,8 @@ class OcrEngineTest {
         assertTrue("$name corners off by $maxErr px", maxErr < 1.0)
 
         val page = Scanner.warpDocument(image, quad)
-        stats.add(name, engine.recognize(page, 0.5f), read("expected/scan_korean_small_$name.txt"))
+        assertNotNull("warp failed for $name", page)
+        stats.add(name, engine.recognize(page!!, 0.5f), read("expected/scan_korean_small_$name.txt"))
         page.release()
         image.release()
       }

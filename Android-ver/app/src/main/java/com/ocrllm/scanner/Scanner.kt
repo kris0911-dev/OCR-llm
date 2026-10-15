@@ -14,6 +14,8 @@ import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -66,8 +68,47 @@ object Scanner {
     return result
   }
 
-  /** Order as top-left, top-right, bottom-right, bottom-left. */
+  /**
+   * Order as top-left, top-right, bottom-right, bottom-left.
+   * The sum/diff trick is kept when it yields four distinct corners.
+   * Near a 45 degree tilt it collapses two corners and the warp goes black,
+   * so that case walks the quad around its centroid instead.
+   */
   fun orderCorners(pts: List<Point>): List<Point> {
+    val legacy = legacyOrder(pts)
+    if (distinctCorners(legacy) && quadArea(legacy) > 1.0) return legacy
+    return robustOrder(pts) ?: legacy
+  }
+
+  /** Perspective-correct the page. Null when the quad is degenerate. */
+  fun warpDocument(frameBgr: Mat, corners: List<Point>): Mat? {
+    val ordered = orderCorners(corners)
+    if (!distinctCorners(ordered) || quadArea(ordered) < 1.0) return null
+    val (tl, tr, br, bl) = ordered
+    val width = max(dist(br, bl), dist(tr, tl)).toInt()
+    val height = max(dist(tr, br), dist(tl, bl)).toInt()
+    if (width < 2 || height < 2) return null
+    val src = MatOfPoint2f(tl, tr, br, bl)
+    val dst = MatOfPoint2f(
+      Point(0.0, 0.0),
+      Point((width - 1).toDouble(), 0.0),
+      Point((width - 1).toDouble(), (height - 1).toDouble()),
+      Point(0.0, (height - 1).toDouble()),
+    )
+    val matrix = Imgproc.getPerspectiveTransform(src, dst)
+    val out = Mat()
+    return try {
+      Imgproc.warpPerspective(frameBgr, out, matrix, Size(width.toDouble(), height.toDouble()))
+      out
+    } catch (e: Exception) {
+      out.release()
+      null
+    } finally {
+      listOf(src, dst, matrix).forEach { it.release() }
+    }
+  }
+
+  private fun legacyOrder(pts: List<Point>): List<Point> {
     val sum = pts.map { it.x + it.y }
     val diff = pts.map { it.y - it.x }
     return listOf(
@@ -76,21 +117,53 @@ object Scanner {
     )
   }
 
-  /** Perspective-correct the page delimited by [corners]. */
-  fun warpDocument(frameBgr: Mat, corners: List<Point>): Mat {
-    val (tl, tr, br, bl) = orderCorners(corners)
-    val width = max(dist(br, bl), dist(tr, tl)).toInt()
-    val height = max(dist(tr, br), dist(tl, bl)).toInt()
-    val src = MatOfPoint2f(tl, tr, br, bl)
-    val dst = MatOfPoint2f(
-      Point(0.0, 0.0), Point(width - 1.0, 0.0),
-      Point(width - 1.0, height - 1.0), Point(0.0, height - 1.0),
-    )
-    val matrix = Imgproc.getPerspectiveTransform(src, dst)
-    val out = Mat()
-    Imgproc.warpPerspective(frameBgr, out, matrix, Size(width.toDouble(), height.toDouble()))
-    listOf(src, dst, matrix).forEach { it.release() }
-    return out
+  private fun robustOrder(pts: List<Point>): List<Point>? {
+    if (pts.size != 4) return null
+    val cx = pts.sumOf { it.x } / 4.0
+    val cy = pts.sumOf { it.y } / 4.0
+    val ring = pts.sortedBy { atan2(it.y - cy, it.x - cx) }
+    return bestRotation(ring) ?: bestRotation(ring.asReversed())
+  }
+
+  private fun bestRotation(ring: List<Point>): List<Point>? {
+    var best: List<Point>? = null
+    var bestTop = Double.POSITIVE_INFINITY
+    var bestHoriz = Double.POSITIVE_INFINITY
+    for (i in ring.indices) {
+      val ordered = List(4) { ring[(i + it) % ring.size] }
+      val (tl, tr, br, bl) = ordered
+      val dx = tr.x - tl.x
+      val dy = tr.y - tl.y
+      if (dx <= 1e-3) continue
+      val topY = (tl.y + tr.y) * 0.5
+      val botY = (bl.y + br.y) * 0.5
+      if (topY >= botY) continue
+      val horiz = abs(dy) / (abs(dx) + 1e-6)
+      if (topY < bestTop || (topY == bestTop && horiz < bestHoriz)) {
+        bestTop = topY
+        bestHoriz = horiz
+        best = ordered
+      }
+    }
+    return best
+  }
+
+  private fun distinctCorners(pts: List<Point>): Boolean {
+    val kept = ArrayList<Point>()
+    for (p in pts) {
+      if (kept.none { hypot(p.x - it.x, p.y - it.y) <= 1.0 }) kept.add(p)
+    }
+    return kept.size == 4
+  }
+
+  private fun quadArea(pts: List<Point>): Double {
+    var area = 0.0
+    for (i in pts.indices) {
+      val a = pts[i]
+      val b = pts[(i + 1) % pts.size]
+      area += a.x * b.y - b.x * a.y
+    }
+    return abs(area) * 0.5
   }
 
   private fun dist(a: Point, b: Point) = hypot(a.x - b.x, a.y - b.y)
@@ -118,6 +191,18 @@ object Images {
     Utils.matToBitmap(rgba, bitmap)
     rgba.release()
     return bitmap
+  }
+
+  /** Shrink so the long side is at most [maxSide]. Recycles [bitmap] when a copy is made. */
+  fun limit(bitmap: Bitmap, maxSide: Int): Bitmap {
+    val longest = max(bitmap.width, bitmap.height)
+    if (longest <= maxSide || longest == 0) return bitmap
+    val scale = maxSide.toDouble() / longest
+    val width = (bitmap.width * scale).toInt().coerceAtLeast(1)
+    val height = (bitmap.height * scale).toInt().coerceAtLeast(1)
+    val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
+    if (scaled !== bitmap) bitmap.recycle()
+    return scaled
   }
 
   /** Decodes a gallery / shared image, honoring EXIF rotation, at most [MAX_SIDE] px. */

@@ -41,8 +41,8 @@ android {
     noCompress += "onnx"
   }
   packaging {
-    // Compress native libraries (ONNX Runtime, OpenCV) to keep the APK smaller.
-    jniLibs.useLegacyPackaging = true
+    // Uncompressed native libs map straight from the APK (faster first launch).
+    jniLibs.useLegacyPackaging = false
   }
 }
 

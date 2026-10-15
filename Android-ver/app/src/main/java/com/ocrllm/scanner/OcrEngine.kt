@@ -73,6 +73,18 @@ class OcrEngine(
     }
     detector = TextDetector(env, detSession, detMaxSide)
     recognizer = TextRecognizer(env, recSession, loadCharacters(app, recModel))
+    warmup()
+  }
+
+  /** First inference compiles kernels. Do it while the status still says "loading". */
+  private fun warmup() {
+    val tiny = org.opencv.core.Mat.zeros(64, 64, org.opencv.core.CvType.CV_8UC3)
+    try {
+      recognize(tiny, 0.99f)
+    } catch (_: Exception) {
+    } finally {
+      tiny.release()
+    }
   }
 
   fun recognize(imageBgr: Mat, minScore: Float = 0.5f): OcrResult {
@@ -136,7 +148,10 @@ class OcrEngine(
      * CTC character table: "blank" + PostProcess.character_dict from inference.yml + " ".
      * The dictionary is a YAML list of plain or single-quoted scalars, one per line.
      */
+    private val characterCache = HashMap<String, List<String>>()
+
     fun loadCharacters(context: Context, name: String): List<String> {
+      synchronized(characterCache) { characterCache[name]?.let { return it } }
       val chars = mutableListOf("blank")
       var inDict = false
       context.assets.open("$MODELS_DIR/$name/inference.yml").bufferedReader(Charsets.UTF_8).useLines { lines ->
@@ -155,6 +170,7 @@ class OcrEngine(
       }
       check(chars.size > 1) { "No character_dict in $name/inference.yml" }
       chars.add(" ")
+      synchronized(characterCache) { characterCache[name] = chars }
       return chars
     }
 
